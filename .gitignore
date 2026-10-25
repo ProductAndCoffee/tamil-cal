@@ -6,3 +6,6 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# Local Sites deployment checkout; source is maintained at the repository root.
+/sites/tamil-calendar/

@@ -9,7 +9,7 @@ export const CITIES: CityInfo[] = [
     country: 'India',
     lat: 13.0827,
     lng: 80.2707,
-    utcOffset: 5.5,
+    timeZone: 'Asia/Kolkata',
   },
   {
     id: 'madurai',
@@ -19,7 +19,7 @@ export const CITIES: CityInfo[] = [
     country: 'India',
     lat: 9.9252,
     lng: 78.1198,
-    utcOffset: 5.5,
+    timeZone: 'Asia/Kolkata',
   },
   {
     id: 'coimbatore',
@@ -29,7 +29,7 @@ export const CITIES: CityInfo[] = [
     country: 'India',
     lat: 11.0168,
     lng: 76.9558,
-    utcOffset: 5.5,
+    timeZone: 'Asia/Kolkata',
   },
   {
     id: 'trichy',
@@ -39,7 +39,7 @@ export const CITIES: CityInfo[] = [
     country: 'India',
     lat: 10.7905,
     lng: 78.7047,
-    utcOffset: 5.5,
+    timeZone: 'Asia/Kolkata',
   },
   {
     id: 'tirunelveli',
@@ -49,7 +49,7 @@ export const CITIES: CityInfo[] = [
     country: 'India',
     lat: 8.7139,
     lng: 77.7567,
-    utcOffset: 5.5,
+    timeZone: 'Asia/Kolkata',
   },
   {
     id: 'salem',
@@ -59,7 +59,7 @@ export const CITIES: CityInfo[] = [
     country: 'India',
     lat: 11.6643,
     lng: 78.1460,
-    utcOffset: 5.5,
+    timeZone: 'Asia/Kolkata',
   },
   {
     id: 'thanjavur',
@@ -69,7 +69,7 @@ export const CITIES: CityInfo[] = [
     country: 'India',
     lat: 10.7870,
     lng: 79.1378,
-    utcOffset: 5.5,
+    timeZone: 'Asia/Kolkata',
   },
   {
     id: 'singapore',
@@ -79,7 +79,7 @@ export const CITIES: CityInfo[] = [
     country: 'Singapore',
     lat: 1.3521,
     lng: 103.8198,
-    utcOffset: 8.0,
+    timeZone: 'Asia/Singapore',
   },
   {
     id: 'kualalumpur',
@@ -89,7 +89,7 @@ export const CITIES: CityInfo[] = [
     country: 'Malaysia',
     lat: 3.1390,
     lng: 101.6869,
-    utcOffset: 8.0,
+    timeZone: 'Asia/Kuala_Lumpur',
   },
   {
     id: 'colombo',
@@ -99,7 +99,7 @@ export const CITIES: CityInfo[] = [
     country: 'Sri Lanka',
     lat: 6.9271,
     lng: 79.8612,
-    utcOffset: 5.5,
+    timeZone: 'Asia/Colombo',
   },
   {
     id: 'london',
@@ -109,7 +109,7 @@ export const CITIES: CityInfo[] = [
     country: 'UK',
     lat: 51.5074,
     lng: -0.1278,
-    utcOffset: 0.0,
+    timeZone: 'Europe/London',
   },
   {
     id: 'newyork',
@@ -119,6 +119,6 @@ export const CITIES: CityInfo[] = [
     country: 'USA',
     lat: 40.7128,
     lng: -74.0060,
-    utcOffset: -5.0,
+    timeZone: 'America/New_York',
   },
 ];

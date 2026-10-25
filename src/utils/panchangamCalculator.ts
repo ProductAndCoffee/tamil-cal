@@ -1,4 +1,4 @@
-import { CityInfo, DayPanchangam, FestivalEvent, MuhurthamEvent } from '../types/panchangam.ts';
+import type { CityInfo, DayPanchangam, FestivalEvent, MuhurthamEvent } from '../types/panchangam.ts';
 import { THIRUKKURAL_COLLECTION } from '../data/thirukkural.ts';
 import { MAJOR_FESTIVALS, FESTIVAL_RULES } from '../data/festivals.ts';
 import { SUBHA_MUHURTHAM_DAYS } from '../data/muhurthams.ts';
@@ -251,6 +251,70 @@ function getKaranamName(karanaIdx: number): string {
   return movableKaranas[(karanaIdx - 1) % 7];
 }
 
+const offsetFormatters = new Map<string, Intl.DateTimeFormat>();
+
+/** Resolve an offset at an instant, never from the browser's timezone. */
+export function utcOffsetAt(instant: Date, city: CityInfo): number {
+  let formatter = offsetFormatters.get(city.timeZone);
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat('en-US', {timeZone: city.timeZone, timeZoneName: 'longOffset'});
+    offsetFormatters.set(city.timeZone, formatter);
+  }
+  const parts = formatter.formatToParts(instant);
+  const zone = parts.find(p => p.type === 'timeZoneName')!.value;
+  if (zone === 'GMT') return 0;
+  const match = zone.match(/GMT([+-])(\d{2}):(\d{2})/)!;
+  return (match[1] === '-' ? -1 : 1) * (+match[2] + +match[3] / 60);
+}
+
+export function localJulianDay(date: Date, minutes: number, city: CityInfo): number {
+  const wall = Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) + minutes * 60000;
+  let instant = wall;
+  for (let i = 0; i < 3; i++) instant = wall - utcOffsetAt(new Date(instant), city) * 3600000;
+  return instant / 86400000 + 2440587.5;
+}
+
+function ayanamsaAt(jd: number): number {
+  const t = (jd - 2451545) / 36525;
+  return 23.853056 + 1.396042 * t + 0.000308 * t * t;
+}
+
+/** Eastern horizon/ecliptic intersection; Lahiri sidereal longitude. */
+export function ascendantLongitude(jd: number, city: CityInfo): number {
+  const t = (jd - 2451545) / 36525;
+  const rad = Math.PI / 180;
+  const theta = (280.46061837 + 360.98564736629 * (jd - 2451545) +
+    0.000387933 * t * t - t * t * t / 38710000 + city.lng) * rad;
+  const eps = (23.439291 - 0.013004167 * t) * rad;
+  const tropical = Math.atan2(Math.cos(theta),
+    -(Math.sin(theta) * Math.cos(eps) + Math.tan(city.lat * rad) * Math.sin(eps))) / rad;
+  return ((tropical - ayanamsaAt(jd)) % 360 + 360) % 360;
+}
+
+const RASIS = ['மேஷ', 'ரிஷப', 'மிதுன', 'கடக', 'சிம்ம', 'கன்னி', 'துலா', 'விருச்சிக', 'தனுசு', 'மகர', 'கும்ப', 'மீன'];
+/** Label explicitly refers to the start of the displayed morning interval. */
+export function lagnamAtTime(date: Date, city: CityInfo, time: string): string {
+  const match = time.match(/(\d{2}):(\d{2})/);
+  if (!match) throw new Error('Missing muhurtham start time');
+  const minutes = Number(match[1]) * 60 + Number(match[2]);
+  const index = Math.floor(ascendantLongitude(localJulianDay(date, minutes, city), city) / 30);
+  return `${RASIS[index]} லக்னம் (தொடக்கத்தில்)`;
+}
+
+/** Tamil sunset rule: the sidereal solar sign at sunset names the civil day. */
+export function tamilSolarDate(date: Date, city: CityInfo) {
+  const signAt = (d: Date) => Math.floor(getAstronomicalState(
+    localJulianDay(d, calculateSunTimes(d, city).sunsetMin, city)).siderealSun / 30);
+  const monthIndex = signAt(date);
+  let day = 1;
+  for (; day <= 33; day++) {
+    const previous = new Date(date.getFullYear(), date.getMonth(), date.getDate() - day);
+    if (signAt(previous) !== monthIndex) break;
+  }
+  const yearStart = date.getFullYear() - (monthIndex >= 9 || (monthIndex === 8 && date.getMonth() === 0) || (monthIndex === 11 && date.getMonth() === 3) ? 1 : 0);
+  return { monthIndex, day, yearStart };
+}
+
 /**
  * Calculate approximate Sunrise and Sunset in minutes from midnight for a given city and day of year.
  */
@@ -274,7 +338,8 @@ function calculateSunTimes(date: Date, city: CityInfo): { sunriseMin: number; su
   const equationOfTime = 9.87 * Math.sin(2 * B) - 7.53 * Math.cos(B) - 1.5 * Math.sin(B);
 
   // Solar noon in local minutes
-  const timeZoneMeridian = city.utcOffset * 15;
+  const offset = utcOffsetAt(new Date((localJulianDay(date, 720, city) - 2440587.5) * 86400000), city);
+  const timeZoneMeridian = offset * 15;
   const longitudeCorrection = 4 * (city.lng - timeZoneMeridian);
   const solarNoonMin = 12 * 60 - longitudeCorrection - equationOfTime;
 
@@ -283,8 +348,7 @@ function calculateSunTimes(date: Date, city: CityInfo): { sunriseMin: number; su
   let sunsetMin = solarNoonMin + halfDayMin;
 
   // Realistic bounds for safety
-  if (isNaN(sunriseMin) || sunriseMin < 240) sunriseMin = 360; // 06:00
-  if (isNaN(sunsetMin) || sunsetMin > 1200) sunsetMin = 1110; // 18:30
+  if (!Number.isFinite(sunriseMin) || !Number.isFinite(sunsetMin)) throw new Error("Invalid solar times");
 
   return { sunriseMin, sunsetMin };
 }
@@ -311,55 +375,10 @@ export function calculateDayPanchangam(targetDate: Date, city: CityInfo): DayPan
   const daySpan = sunsetMin - sunriseMin;
   const part8 = daySpan / 8;
 
-  // Determine Tamil Month & Date
-  // Reference anchor: April 14 is Chithirai 1
-  let tamilMonthIndex = 0;
-  let tamilDateNumber = 1;
-
-  if (month === 0) { // Jan
-    if (day < 15) { tamilMonthIndex = 8; tamilDateNumber = day + 16; } // Margazhi
-    else { tamilMonthIndex = 9; tamilDateNumber = day - 14; } // Thai
-  } else if (month === 1) { // Feb
-    if (day < 13) { tamilMonthIndex = 9; tamilDateNumber = day + 17; } // Thai
-    else { tamilMonthIndex = 10; tamilDateNumber = day - 12; } // Masi
-  } else if (month === 2) { // Mar
-    if (day < 15) { tamilMonthIndex = 10; tamilDateNumber = day + 16; } // Masi
-    else { tamilMonthIndex = 11; tamilDateNumber = day - 14; } // Panguni
-  } else if (month === 3) { // Apr
-    if (day < 14) { tamilMonthIndex = 11; tamilDateNumber = day + 17; } // Panguni
-    else { tamilMonthIndex = 0; tamilDateNumber = day - 13; } // Chithirai
-  } else if (month === 4) { // May
-    if (day < 15) { tamilMonthIndex = 0; tamilDateNumber = day + 17; } // Chithirai
-    else { tamilMonthIndex = 1; tamilDateNumber = day - 14; } // Vaikasi
-  } else if (month === 5) { // Jun
-    if (day < 15) { tamilMonthIndex = 1; tamilDateNumber = day + 17; } // Vaikasi
-    else { tamilMonthIndex = 2; tamilDateNumber = day - 14; } // Aani
-  } else if (month === 6) { // Jul
-    if (day < 16) { tamilMonthIndex = 2; tamilDateNumber = day + 16; } // Aani
-    else { tamilMonthIndex = 3; tamilDateNumber = day - 15; } // Aadi
-  } else if (month === 7) { // Aug
-    if (day < 17) { tamilMonthIndex = 3; tamilDateNumber = day + 16; } // Aadi
-    else { tamilMonthIndex = 4; tamilDateNumber = day - 16; } // Avani
-  } else if (month === 8) { // Sep
-    if (day < 17) { tamilMonthIndex = 4; tamilDateNumber = day + 15; } // Avani
-    else { tamilMonthIndex = 5; tamilDateNumber = day - 16; } // Purattasi
-  } else if (month === 9) { // Oct
-    if (day < 18) { tamilMonthIndex = 5; tamilDateNumber = day + 14; } // Purattasi
-    else { tamilMonthIndex = 6; tamilDateNumber = day - 17; } // Aippasi
-  } else if (month === 10) { // Nov
-    if (day < 17) { tamilMonthIndex = 6; tamilDateNumber = day + 14; } // Aippasi
-    else { tamilMonthIndex = 7; tamilDateNumber = day - 16; } // Karthigai
-  } else { // Dec
-    if (day < 16) { tamilMonthIndex = 7; tamilDateNumber = day + 14; } // Karthigai
-    else { tamilMonthIndex = 8; tamilDateNumber = day - 15; } // Margazhi
-  }
-
-  // Tamil Year calculation (cycle of 60 years)
-  // For 2024: Krodhi (index 37 in TAMIL_YEARS) starting April 14
-  let cycleBaseYear = year - 1987; // 1987 is Prabhava (0)
-  if (month < 3 || (month === 3 && day < 14)) {
-    cycleBaseYear -= 1;
-  }
+  const solarDate = tamilSolarDate(date, city);
+  const tamilMonthIndex = solarDate.monthIndex;
+  const tamilDateNumber = solarDate.day;
+  const cycleBaseYear = solarDate.yearStart - 1987;
   const yearIndex = ((cycleBaseYear % 60) + 60) % 60;
   const tamilYear = `${TAMIL_YEARS[yearIndex]} வருடம்`;
 
@@ -380,8 +399,7 @@ export function calculateDayPanchangam(targetDate: Date, city: CityInfo): DayPan
   const currentUtcTime = Date.UTC(year, month, day);
   const diffDays = Math.round((currentUtcTime - anchorTime) / (1000 * 60 * 60 * 24));
 
-  const sunriseUtcHours = sunriseMin / 60 - city.utcOffset;
-  const jdSunrise = currentUtcTime / 86400000 + 2440587.5 + sunriseUtcHours / 24;
+  const jdSunrise = localJulianDay(date, sunriseMin, city);
   const astroState = getAstronomicalState(jdSunrise);
 
   const nakshatraIndex = astroState.nakshatraIdx;
@@ -512,8 +530,7 @@ export function calculateDayPanchangam(targetDate: Date, city: CityInfo): DayPan
     (dayOfWeek === 0 || dayOfWeek === 1 || dayOfWeek === 3 || dayOfWeek === 4 || dayOfWeek === 5) &&
     ![4, 8, 9, 14, 15].includes(thithiNumber);
 
-  const lagnams = ['ரிஷப லக்னம்', 'மிதுன லக்னம்', 'கடக லக்னம்', 'சிம்ம லக்னம்', 'கன்னி லக்னம்', 'துலா லக்னம்', 'விருச்சிக லக்னம்', 'தனுசு லக்னம்', 'கும்ப லக்னம்', 'மீன லக்னம்'];
-  const computedLagnam = lagnams[(tamilMonthIndex + day) % lagnams.length];
+  const computedLagnam = lagnamAtTime(date, city, nallaNeramPresets[dayOfWeek].morning);
   const matchedMuhurtham = exactMuhurtham || (isRuleMuhurthamDay ? {
     dateString,
     tamilDate: `${TAMIL_MONTHS[tamilMonthIndex].name} ${String(tamilDateNumber).padStart(2, '0')}`,
@@ -632,8 +649,7 @@ export function calculateDayPanchangam(targetDate: Date, city: CityInfo): DayPan
  */
 export function getFestivalsForYear(referenceDate: Date, city: CityInfo): FestivalEvent[] {
   const refYear = referenceDate.getFullYear();
-  const isBeforeTamilNewYear = referenceDate.getMonth() < 3 || (referenceDate.getMonth() === 3 && referenceDate.getDate() < 14);
-  const tamilYearStart = isBeforeTamilNewYear ? refYear - 1 : refYear;
+  const tamilYearStart = tamilSolarDate(referenceDate, city).yearStart;
 
   // If the Tamil year starts in 2024, return the curated 2024-2025 list
   if (tamilYearStart === 2024) {
@@ -642,9 +658,9 @@ export function getFestivalsForYear(referenceDate: Date, city: CityInfo): Festiv
 
   const events: FestivalEvent[] = [];
   const seenRuleIds = new Set<string>();
-  const startDate = new Date(tamilYearStart, 3, 14); // April 14
+  const startDate = tamilYearBeginning(tamilYearStart, city); // April 14
 
-  for (let i = 0; i < 365; i++) {
+  for (let i = 0; i < Math.round((Date.UTC(tamilYearStart + 1, 3, tamilYearBeginning(tamilYearStart + 1, city).getDate()) - Date.UTC(tamilYearStart, 3, startDate.getDate())) / 86400000); i++) {
     const d = new Date(startDate);
     d.setDate(startDate.getDate() + i);
     const p = calculateDayPanchangam(d, city);
@@ -691,18 +707,16 @@ export function getFestivalsForYear(referenceDate: Date, city: CityInfo): Festiv
  */
 export function getMuhurthamsForYear(referenceDate: Date, city: CityInfo): MuhurthamEvent[] {
   const refYear = referenceDate.getFullYear();
-  const isBeforeTamilNewYear = referenceDate.getMonth() < 3 || (referenceDate.getMonth() === 3 && referenceDate.getDate() < 14);
-  const tamilYearStart = isBeforeTamilNewYear ? refYear - 1 : refYear;
+  const tamilYearStart = tamilSolarDate(referenceDate, city).yearStart;
 
   if (tamilYearStart === 2024) {
     return SUBHA_MUHURTHAM_DAYS;
   }
 
   const events: MuhurthamEvent[] = [];
-  const startDate = new Date(tamilYearStart, 3, 14);
-  const lagnams = ['ரிஷப லக்னம்', 'மிதுன லக்னம்', 'கடக லக்னம்', 'சிம்ம லக்னம்', 'துலா லக்னம்', 'விருச்சிக லக்னம்', 'தனுசு லக்னம்', 'மேஷ லக்னம்'];
+  const startDate = tamilYearBeginning(tamilYearStart, city);
 
-  for (let i = 0; i < 365; i++) {
+  for (let i = 0; i < Math.round((Date.UTC(tamilYearStart + 1, 3, tamilYearBeginning(tamilYearStart + 1, city).getDate()) - Date.UTC(tamilYearStart, 3, startDate.getDate())) / 86400000); i++) {
     const d = new Date(startDate);
     d.setDate(startDate.getDate() + i);
     const dayOfWeek = d.getDay();
@@ -724,7 +738,7 @@ export function getMuhurthamsForYear(referenceDate: Date, city: CityInfo): Muhur
         dateString: p.dateString,
         tamilDate: `${p.tamilMonthName} ${String(p.tamilDate).padStart(2, '0')}`,
         dayOfWeek: p.tamilWeekday,
-        lagnam: lagnams[(p.tamilMonthIndex + p.tamilDate) % lagnams.length],
+        lagnam: lagnamAtTime(d, city, p.nallaNeram.morning!),
         nakshatram: p.nakshatram.name,
         thithi: p.thithi.name,
         type: isSukla ? 'valarpirai' : 'theipirai',
@@ -799,4 +813,13 @@ export function getUpcomingVirathams(
   }
 
   return results;
+}
+
+function tamilYearBeginning(year: number, city: CityInfo): Date {
+  for (let day = 10; day <= 20; day++) {
+    const date = new Date(year, 3, day);
+    const tamil = tamilSolarDate(date, city);
+    if (tamil.monthIndex === 0 && tamil.day === 1) return date;
+  }
+  throw new Error('Tamil new year outside supported search interval');
 }

@@ -34,6 +34,7 @@ export const DateToolbar: React.FC<DateToolbarProps> = ({
   panchangam,
 }) => {
   const [copied, setCopied] = useState(false);
+  const [shareError, setShareError] = useState(false);
   const [isCityDropdownOpen, setIsCityDropdownOpen] = useState(false);
 
   // Format date as DD/MM/YYYY for Indian/Tamil convention
@@ -54,11 +55,17 @@ export const DateToolbar: React.FC<DateToolbarProps> = ({
     window.print();
   };
 
-  const handleShare = () => {
+  const handleShare = async () => {
+    setCopied(false);
+    setShareError(false);
     const textToCopy = `ஸ்ரீ சுபமுகூர்த்த பஞ்சாங்கம் - ${panchangam.tamilDate} ${panchangam.tamilMonthName} (${formattedDisplay})\nநல்ல நேரம்: ${panchangam.nallaNeram.morning}\nநட்சத்திரம்: ${panchangam.nakshatram.name}\nதிதி: ${panchangam.thithi.name}\n${window.location.href}`;
-    navigator.clipboard.writeText(textToCopy);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2500);
+    try {
+      await navigator.clipboard.writeText(textToCopy);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
+    } catch {
+      setShareError(true);
+    }
   };
 
   return (
@@ -183,9 +190,9 @@ export const DateToolbar: React.FC<DateToolbarProps> = ({
             >
               {copied ? <Check className="w-4 h-4 text-emerald-600" /> : <Share2 className="w-4 h-4" />}
             </button>
-            {copied && (
-              <span className="absolute -bottom-8 right-0 bg-[#690600] text-white text-[10px] font-sans px-2 py-0.5 rounded shadow whitespace-nowrap z-30">
-                நகலெடுக்கப்பட்டது!
+            {(copied || shareError) && (
+              <span role="status" aria-live="polite" className="absolute -bottom-8 right-0 bg-[#690600] text-white text-[10px] font-sans px-2 py-0.5 rounded shadow whitespace-nowrap z-30">
+                {shareError ? 'நகலெடுக்க முடியவில்லை. மீண்டும் முயற்சிக்கவும்.' : 'நகலெடுக்கப்பட்டது!'}
               </span>
             )}
           </div>

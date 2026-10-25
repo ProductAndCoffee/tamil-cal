@@ -10,7 +10,7 @@ export interface CityInfo {
   country: string;
   lat: number;
   lng: number;
-  utcOffset: number; // in hours
+  timeZone: string; // IANA timezone, including historical daylight-saving rules
 }
 
 export type MainViewTab = 
