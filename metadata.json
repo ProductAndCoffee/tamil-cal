@@ -1,0 +1,6 @@
+{
+  "name": "Sacred Tamil Daily Calendar & Divine Panchangam",
+  "description": "Authentic Tamil Daily Wall Calendar and Panchangam ephemeris with auspicious timings, nalla neram, rahu kalam, thithi, nakshatram, and festivals.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

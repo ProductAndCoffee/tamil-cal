@@ -1,0 +1,53 @@
+@import "tailwindcss";
+
+@layer base {
+  body {
+    font-family: 'Noto Sans Tamil', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background-color: #fbf9f3;
+    color: #1b1c19;
+  }
+}
+
+.font-serif-tamil {
+  font-family: 'Noto Serif Tamil', 'EB Garamond', Georgia, serif;
+}
+
+.font-sans-tamil {
+  font-family: 'Noto Sans Tamil', system-ui, -apple-system, sans-serif;
+}
+
+.font-garamond {
+  font-family: 'EB Garamond', Georgia, serif;
+}
+
+.font-grotesk {
+  font-family: 'Space Grotesk', system-ui, sans-serif;
+}
+
+/* Custom authentic calendar borders and patterns */
+.sacred-border {
+  border: 1px solid #dcd5c7;
+}
+
+.kolam-pattern {
+  background-image: radial-gradient(#d97706 0.75px, transparent 0.75px), radial-gradient(#d97706 0.75px, #fbf9f3 0.75px);
+  background-size: 30px 30px;
+  background-position: 0 0, 15px 15px;
+  background-color: #fcfbf8;
+}
+
+/* Print formatting for tear-off sheet */
+@media print {
+  body {
+    background: #ffffff !important;
+  }
+  .no-print {
+    display: none !important;
+  }
+  .print-page {
+    box-shadow: none !important;
+    border: 1px solid #777 !important;
+    margin: 0 !important;
+    width: 100% !important;
+  }
+}
