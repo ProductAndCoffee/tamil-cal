@@ -1,25 +1,22 @@
 import React from 'react';
-import { DayPanchangam } from '../types/panchangam.ts';
+import { DayPanchangam, CityInfo } from '../types/panchangam.ts';
+import { getUpcomingVirathams } from '../utils/panchangamCalculator.ts';
 import { Clock, AlertTriangle, Flame, Bell, ChevronRight } from 'lucide-react';
 import { TempleGraphic } from './TempleGraphic.tsx';
 
 interface RightSidebarCardsProps {
   panchangam: DayPanchangam;
+  selectedCity: CityInfo;
   onSelectDateString?: (dateStr: string) => void;
 }
 
 export const RightSidebarCards: React.FC<RightSidebarCardsProps> = ({
   panchangam,
+  selectedCity,
   onSelectDateString,
 }) => {
-  // Upcoming Virathams (dynamically shown or curated)
-  const upcomingVirathams = [
-    { title: 'சித்திரை சஷ்டி விரதம்', dateLabel: 'ஏப்ரல் 28 (நாளை)', dateStr: '2024-04-28' },
-    { title: 'சர்வ ஏகாதசி (வருதினி)', dateLabel: 'மே 04, 2024', dateStr: '2024-05-04' },
-    { title: 'அட்சய திருதியை (Akshaya Tritiya)', dateLabel: 'மே 10, 2024', dateStr: '2024-05-10' },
-    { title: 'சித்ரா பௌர்ணமி (Chitra Pournami)', dateLabel: 'மே 23, 2024', dateStr: '2024-05-23' },
-    { title: 'வைகாசி விசாகம் (Vaikasi Visakam)', dateLabel: 'மே 22, 2024', dateStr: '2024-05-22' },
-  ];
+  // Upcoming Virathams (dynamically computed from panchangam.date)
+  const upcomingVirathams = getUpcomingVirathams(panchangam.date, selectedCity);
 
   return (
     <div className="w-full flex flex-col gap-3.5 select-none">

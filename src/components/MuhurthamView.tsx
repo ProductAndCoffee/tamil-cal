@@ -1,15 +1,27 @@
-import React, { useState } from 'react';
-import { SUBHA_MUHURTHAM_DAYS } from '../data/muhurthams.ts';
+import React, { useState, useMemo } from 'react';
+import { CityInfo } from '../types/panchangam.ts';
+import { getMuhurthamsForYear } from '../utils/panchangamCalculator.ts';
 import { Star, Clock, Calendar, ArrowRight, Heart } from 'lucide-react';
 
 interface MuhurthamViewProps {
+  currentDate: Date;
+  selectedCity: CityInfo;
   onSelectDateString: (dateStr: string) => void;
 }
 
-export const MuhurthamView: React.FC<MuhurthamViewProps> = ({ onSelectDateString }) => {
+export const MuhurthamView: React.FC<MuhurthamViewProps> = ({
+  currentDate,
+  selectedCity,
+  onSelectDateString,
+}) => {
   const [filterType, setFilterType] = useState<'all' | 'valarpirai' | 'theipirai'>('all');
 
-  const filtered = SUBHA_MUHURTHAM_DAYS.filter((m) => {
+  const muhurthamsList = useMemo(
+    () => getMuhurthamsForYear(currentDate, selectedCity),
+    [currentDate, selectedCity]
+  );
+
+  const filtered = muhurthamsList.filter((m) => {
     if (filterType === 'all') return true;
     return m.type === filterType;
   });

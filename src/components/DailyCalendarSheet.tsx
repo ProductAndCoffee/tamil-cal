@@ -7,6 +7,12 @@ interface DailyCalendarSheetProps {
   panchangam: DayPanchangam;
 }
 
+function getOrdinalSuffix(n: number): string {
+  const s = ['th', 'st', 'nd', 'rd'];
+  const v = n % 100;
+  return s[(v - 20) % 10] || s[v] || s[0];
+}
+
 export const DailyCalendarSheet: React.FC<DailyCalendarSheetProps> = ({ panchangam }) => {
   return (
     <div className="w-full print-page">
@@ -145,8 +151,18 @@ export const DailyCalendarSheet: React.FC<DailyCalendarSheetProps> = ({ panchang
               <span className="px-2 py-0.5 rounded bg-[#faedd9] text-[#78350f] font-medium">
                 சந்திராஷ்டமம்: {panchangam.chandrashtamam.star}
               </span>
-              <span className="px-2 py-0.5 rounded bg-[#e8f5e9] text-[#1b5e20] font-medium">
-                சுப யோக நன்னாள்
+              <span
+                className={`px-2 py-0.5 rounded font-medium ${
+                  panchangam.yogam.nature === 'Varjyam'
+                    ? 'bg-[#ffdad6] text-[#93000a]'
+                    : 'bg-[#e8f5e9] text-[#1b5e20]'
+                }`}
+              >
+                {panchangam.yogam.nature === 'Varjyam'
+                  ? 'மரண யோகம் • கவனம் தேவை'
+                  : panchangam.yogam.nature === 'Athiyantham'
+                  ? 'அமிர்த யோக நன்னாள்'
+                  : 'சுப யோக நன்னாள்'}
               </span>
             </div>
           </div>
@@ -168,6 +184,9 @@ export const DailyCalendarSheet: React.FC<DailyCalendarSheetProps> = ({ panchang
 
             {/* Description Text */}
             <div className="flex-1 text-xs sm:text-sm text-stone-700 leading-relaxed font-serif-tamil">
+              <div className="font-bold text-[#690600] text-sm sm:text-base mb-1">
+                {panchangam.specialEvents.title}
+              </div>
               <p>
                 {panchangam.specialEvents.description}
               </p>
@@ -187,17 +206,13 @@ export const DailyCalendarSheet: React.FC<DailyCalendarSheetProps> = ({ panchang
           </div>
         </div>
 
-        {/* English Reference & Other Eras */}
+        {/* English Reference & Saka Era */}
         <div className="py-2.5 px-3 rounded bg-[#f7f3ea] border border-[#e2d8c7] text-center my-2 text-[11px] sm:text-xs text-stone-700">
           <div className="font-semibold text-stone-900 font-garamond text-xs sm:text-sm">
-            English Date: {panchangam.dayOfMonth}th {panchangam.monthNameEnglish} {panchangam.yearEnglish}, {panchangam.dayOfWeekEnglish}
+            English Date: {panchangam.dayOfMonth}{getOrdinalSuffix(panchangam.dayOfMonth)} {panchangam.monthNameEnglish} {panchangam.yearEnglish}, {panchangam.dayOfWeekEnglish}
             <span className="text-stone-400 font-normal"> | Gregorian Calendar</span>
           </div>
           <div className="mt-1 text-[10px] sm:text-[11px] text-[#78350f] font-serif-tamil flex items-center justify-center gap-2 sm:gap-4 flex-wrap">
-            <span>Hijri: {panchangam.eras.hijri}</span>
-            <span>•</span>
-            <span>Kollam Era: {panchangam.eras.kollam}</span>
-            <span>•</span>
             <span>சக சகாப்தம்: {panchangam.eras.saka}</span>
           </div>
         </div>

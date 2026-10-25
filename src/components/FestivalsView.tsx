@@ -1,16 +1,28 @@
-import React, { useState } from 'react';
-import { MAJOR_FESTIVALS } from '../data/festivals.ts';
+import React, { useState, useMemo } from 'react';
+import { CityInfo } from '../types/panchangam.ts';
+import { getFestivalsForYear } from '../utils/panchangamCalculator.ts';
 import { Search, Sparkles, Calendar, ArrowRight, Tag } from 'lucide-react';
 
 interface FestivalsViewProps {
+  currentDate: Date;
+  selectedCity: CityInfo;
   onSelectDateString: (dateStr: string) => void;
 }
 
-export const FestivalsView: React.FC<FestivalsViewProps> = ({ onSelectDateString }) => {
+export const FestivalsView: React.FC<FestivalsViewProps> = ({
+  currentDate,
+  selectedCity,
+  onSelectDateString,
+}) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
 
-  const filtered = MAJOR_FESTIVALS.filter((f) => {
+  const festivalsList = useMemo(
+    () => getFestivalsForYear(currentDate, selectedCity),
+    [currentDate, selectedCity]
+  );
+
+  const filtered = festivalsList.filter((f) => {
     const matchesSearch =
       f.titleTamil.toLowerCase().includes(searchTerm.toLowerCase()) ||
       f.titleEnglish.toLowerCase().includes(searchTerm.toLowerCase()) ||

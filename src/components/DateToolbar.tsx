@@ -1,6 +1,16 @@
 import React, { useState } from 'react';
-import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, Printer, Share2, Check } from 'lucide-react';
-import { DayPanchangam } from '../types/panchangam.ts';
+import {
+  Calendar as CalendarIcon,
+  ChevronLeft,
+  ChevronRight,
+  Printer,
+  Share2,
+  Check,
+  MapPin,
+  ChevronDown,
+} from 'lucide-react';
+import { CityInfo, DayPanchangam } from '../types/panchangam.ts';
+import { CITIES } from '../data/cities.ts';
 
 interface DateToolbarProps {
   currentDate: Date;
@@ -8,6 +18,8 @@ interface DateToolbarProps {
   onNextDay: () => void;
   onToday: () => void;
   onSelectDate: (date: Date) => void;
+  selectedCity: CityInfo;
+  onSelectCity: (city: CityInfo) => void;
   panchangam: DayPanchangam;
 }
 
@@ -17,9 +29,12 @@ export const DateToolbar: React.FC<DateToolbarProps> = ({
   onNextDay,
   onToday,
   onSelectDate,
+  selectedCity,
+  onSelectCity,
   panchangam,
 }) => {
   const [copied, setCopied] = useState(false);
+  const [isCityDropdownOpen, setIsCityDropdownOpen] = useState(false);
 
   // Format date as DD/MM/YYYY for Indian/Tamil convention
   const day = String(currentDate.getDate()).padStart(2, '0');
@@ -54,7 +69,7 @@ export const DateToolbar: React.FC<DateToolbarProps> = ({
         <div className="flex items-center gap-1.5 sm:gap-2">
           <button
             onClick={onPrevDay}
-            className="flex items-center gap-1 px-2.5 py-1.5 rounded-md border border-[#d5c7b3] bg-white text-xs font-medium text-[#552300] hover:bg-[#f4ece1] active:scale-95 transition-all shadow-2xs"
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-md border border-[#d5c7b3] bg-white text-xs font-medium text-[#552300] hover:bg-[#f4ece1] active:scale-95 transition-all shadow-2xs cursor-pointer"
             title="முந்தைய நாள்"
           >
             <ChevronLeft className="w-3.5 h-3.5" />
@@ -63,7 +78,7 @@ export const DateToolbar: React.FC<DateToolbarProps> = ({
 
           <button
             onClick={onToday}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-[#690600] text-[#fef08a] hover:bg-[#8b1e0f] active:scale-95 text-xs font-semibold shadow-sm transition-all"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-[#690600] text-[#fef08a] hover:bg-[#8b1e0f] active:scale-95 text-xs font-semibold shadow-sm transition-all cursor-pointer"
             title="இன்றைய நாள்"
           >
             <CalendarIcon className="w-3.5 h-3.5 text-[#fbbf24]" />
@@ -72,7 +87,7 @@ export const DateToolbar: React.FC<DateToolbarProps> = ({
 
           <button
             onClick={onNextDay}
-            className="flex items-center gap-1 px-2.5 py-1.5 rounded-md border border-[#d5c7b3] bg-white text-xs font-medium text-[#552300] hover:bg-[#f4ece1] active:scale-95 transition-all shadow-2xs"
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-md border border-[#d5c7b3] bg-white text-xs font-medium text-[#552300] hover:bg-[#f4ece1] active:scale-95 transition-all shadow-2xs cursor-pointer"
             title="அடுத்த நாள்"
           >
             <span className="hidden sm:inline font-serif-tamil">அடுத்த நாள்</span>
@@ -80,8 +95,59 @@ export const DateToolbar: React.FC<DateToolbarProps> = ({
           </button>
         </div>
 
-        {/* Date Selector & Action Tools */}
+        {/* City Selector, Date Selector & Action Tools */}
         <div className="flex items-center gap-2">
+          
+          {/* City Picker (Matched to Date Picker height, border, and radius) */}
+          <div className="relative flex items-center">
+            <button
+              onClick={() => setIsCityDropdownOpen(!isCityDropdownOpen)}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-[#d5c7b3] hover:border-[#8b1e0f] hover:bg-[#f4ece1] rounded-md shadow-2xs text-xs font-medium text-[#690600] transition-colors cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#8b1e0f]"
+              title="இருப்பிடத்தை மாற்றவும்"
+            >
+              <MapPin className="w-3.5 h-3.5 text-[#8b1e0f]" />
+              <span className="font-serif-tamil font-semibold">{selectedCity.nameTamil}</span>
+              <ChevronDown className="w-3.5 h-3.5 text-[#78350f]" />
+            </button>
+
+            {isCityDropdownOpen && (
+              <>
+                <div
+                  className="fixed inset-0 z-40"
+                  onClick={() => setIsCityDropdownOpen(false)}
+                />
+                <div className="absolute right-0 top-full mt-1.5 w-60 bg-white rounded-lg shadow-xl border border-[#d5c7b3] py-1.5 z-50 divide-y divide-[#f2ece3]">
+                  <div className="px-3 py-1.5 text-[11px] font-bold text-[#78350f] uppercase tracking-wider bg-[#faf7f2]">
+                    நகரத்தை தேர்ந்தெடுக்கவும்
+                  </div>
+                  <div className="max-h-64 overflow-y-auto py-1">
+                    {CITIES.map((c) => {
+                      const isSelected = c.id === selectedCity.id;
+                      return (
+                        <button
+                          key={c.id}
+                          onClick={() => {
+                            onSelectCity(c);
+                            setIsCityDropdownOpen(false);
+                          }}
+                          className={`w-full text-left px-3 py-1.5 text-xs flex items-center justify-between hover:bg-[#fbf4ea] transition-colors cursor-pointer ${
+                            isSelected ? 'bg-[#f8ede0] font-bold text-[#690600]' : 'text-stone-700'
+                          }`}
+                        >
+                          <div>
+                            <div className="font-medium font-serif-tamil">{c.nameTamil}</div>
+                            <div className="text-[10px] text-stone-500">{c.nameEnglish}, {c.country}</div>
+                          </div>
+                          {isSelected && <Check className="w-3.5 h-3.5 text-[#8b1e0f]" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+
           {/* Calendar Date Picker Dial */}
           <div className="relative flex items-center">
             <label className="flex items-center gap-2 px-3 py-1.5 bg-white border border-[#d5c7b3] hover:border-[#8b1e0f] rounded-md shadow-2xs cursor-pointer group">
@@ -102,7 +168,7 @@ export const DateToolbar: React.FC<DateToolbarProps> = ({
           {/* Print Button */}
           <button
             onClick={handlePrint}
-            className="p-1.5 rounded-md border border-[#d5c7b3] bg-white text-stone-700 hover:text-[#690600] hover:bg-[#f4ece1] transition-colors shadow-2xs"
+            className="p-1.5 rounded-md border border-[#d5c7b3] bg-white text-stone-700 hover:text-[#690600] hover:bg-[#f4ece1] transition-colors shadow-2xs cursor-pointer"
             title="காலண்டர் தாள் அச்சிடுக (Print Sheet)"
           >
             <Printer className="w-4 h-4" />
@@ -112,7 +178,7 @@ export const DateToolbar: React.FC<DateToolbarProps> = ({
           <div className="relative">
             <button
               onClick={handleShare}
-              className="p-1.5 rounded-md border border-[#d5c7b3] bg-white text-stone-700 hover:text-[#690600] hover:bg-[#f4ece1] transition-colors shadow-2xs"
+              className="p-1.5 rounded-md border border-[#d5c7b3] bg-white text-stone-700 hover:text-[#690600] hover:bg-[#f4ece1] transition-colors shadow-2xs cursor-pointer"
               title="பஞ்சாங்க தகவலைப் பகிர்க (Share)"
             >
               {copied ? <Check className="w-4 h-4 text-emerald-600" /> : <Share2 className="w-4 h-4" />}

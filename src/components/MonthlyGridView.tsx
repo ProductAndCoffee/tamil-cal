@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { CityInfo } from '../types/panchangam.ts';
 import { calculateDayPanchangam, TAMIL_WEEKDAYS } from '../utils/panchangamCalculator.ts';
 import { ChevronLeft, ChevronRight, Star, Moon } from 'lucide-react';
@@ -16,6 +16,11 @@ export const MonthlyGridView: React.FC<MonthlyGridViewProps> = ({
 }) => {
   const [viewYear, setViewYear] = useState(currentDate.getFullYear());
   const [viewMonth, setViewMonth] = useState(currentDate.getMonth()); // 0-11
+
+  useEffect(() => {
+    setViewYear(currentDate.getFullYear());
+    setViewMonth(currentDate.getMonth());
+  }, [currentDate]);
 
   const handlePrevMonth = () => {
     if (viewMonth === 0) {

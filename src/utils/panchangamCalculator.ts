@@ -1,6 +1,6 @@
-import { CityInfo, DayPanchangam } from '../types/panchangam.ts';
+import { CityInfo, DayPanchangam, FestivalEvent, MuhurthamEvent } from '../types/panchangam.ts';
 import { THIRUKKURAL_COLLECTION } from '../data/thirukkural.ts';
-import { MAJOR_FESTIVALS } from '../data/festivals.ts';
+import { MAJOR_FESTIVALS, FESTIVAL_RULES } from '../data/festivals.ts';
 import { SUBHA_MUHURTHAM_DAYS } from '../data/muhurthams.ts';
 
 // 60-Year Tamil Cycle
@@ -86,17 +86,25 @@ export const SOOLAM_TABLE = [
 ];
 
 /**
- * Format minutes since midnight into HH:MM (12-hour format with காலை / மாலை)
+ * Format minutes since midnight into HH:MM (12-hour format with அதிகாலை / காலை / மதியம் / மாலை / இரவு)
  */
 function formatTime12h(minutes: number): string {
+  const isNextDay = minutes >= 1440;
   const normalized = ((minutes % 1440) + 1440) % 1440;
   const hours24 = Math.floor(normalized / 60);
   const mins = Math.floor(normalized % 60);
-  const period = hours24 < 12 ? 'காலை' : (hours24 < 16 ? 'மதியம்' : 'மாலை');
+  let period = 'காலை';
+  if (hours24 < 4) period = 'இரவு';
+  else if (hours24 < 6) period = 'அதிகாலை';
+  else if (hours24 < 12) period = 'காலை';
+  else if (hours24 < 16) period = 'மதியம்';
+  else if (hours24 < 19) period = 'மாலை';
+  else period = 'இரவு';
+
   const h12 = hours24 % 12 === 0 ? 12 : hours24 % 12;
   const hStr = h12 < 10 ? `0${h12}` : `${h12}`;
   const mStr = mins < 10 ? `0${mins}` : `${mins}`;
-  return `${period} ${hStr}:${mStr}`;
+  return `${isNextDay ? 'மறுநாள் ' : ''}${period} ${hStr}:${mStr}`;
 }
 
 function formatTimeHHMM(minutes: number): string {
@@ -109,11 +117,147 @@ function formatTimeHHMM(minutes: number): string {
 }
 
 /**
+ * Astronomical Ephemeris (Jean Meeus Chapter 25 & 47 + Lahiri Chitrapaksha Ayanamsa)
+ * Computes accurate Sun & Moon sidereal longitudes, Thithi, Nakshatram, Pada, and Karanam for any Julian Day.
+ */
+interface AstronomicalPanchangamState {
+  siderealSun: number;
+  siderealMoon: number;
+  elongation: number;
+  thithiIdx: number; // 0 to 29
+  karanaIdx: number; // 0 to 59
+  nakshatraIdx: number; // 0 to 26
+  pada: number; // 1 to 4
+}
+
+function getAstronomicalState(jd: number): AstronomicalPanchangamState {
+  const T = (jd - 2451545.0) / 36525.0;
+  const deg2rad = Math.PI / 180;
+  const norm = (x: number) => ((x % 360) + 360) % 360;
+
+  // Sun true longitude
+  const L0 = norm(280.46646 + 36000.76983 * T + 0.0003032 * T * T);
+  const M = norm(357.52911 + 35999.05029 * T - 0.0001537 * T * T);
+  const C =
+    (1.914602 - 0.004817 * T - 0.000014 * T * T) * Math.sin(M * deg2rad) +
+    (0.019993 - 0.000101 * T) * Math.sin(2 * M * deg2rad) +
+    0.000289 * Math.sin(3 * M * deg2rad);
+  const omega = 125.04 - 1934.136 * T;
+  const sunLon = norm(L0 + C - 0.00569 - 0.00478 * Math.sin(omega * deg2rad));
+
+  // Moon true longitude (Meeus Ch. 47)
+  const Lp = norm(218.3164477 + 481267.88123421 * T - 0.0015786 * T * T + (T * T * T) / 538841);
+  const D = norm(297.8501921 + 445267.1114034 * T - 0.0018819 * T * T + (T * T * T) / 545868);
+  const Ms = norm(357.5291092 + 35999.0502909 * T - 0.0001536 * T * T + (T * T * T) / 24490000);
+  const Mp = norm(134.9633964 + 477198.8675055 * T + 0.0087414 * T * T + (T * T * T) / 69699);
+  const F = norm(93.2720950 + 483202.0175233 * T - 0.0036539 * T * T - (T * T * T) / 3526000);
+
+  const A1 = norm(119.75 + 131.849 * T);
+  const A2 = norm(53.09 + 479264.290 * T);
+  const E = 1 - 0.002516 * T - 0.0000074 * T * T;
+
+  let dL = 0;
+  dL += 6.288774 * Math.sin(Mp * deg2rad);
+  dL += 1.274027 * Math.sin((2 * D - Mp) * deg2rad);
+  dL += 0.658314 * Math.sin(2 * D * deg2rad);
+  dL += 0.213618 * Math.sin(2 * Mp * deg2rad);
+  dL -= 0.185116 * E * Math.sin(Ms * deg2rad);
+  dL -= 0.114332 * Math.sin(2 * F * deg2rad);
+  dL += 0.058793 * Math.sin((2 * D - 2 * Mp) * deg2rad);
+  dL += 0.057066 * E * Math.sin((2 * D - Ms - Mp) * deg2rad);
+  dL += 0.053322 * Math.sin((2 * D + Mp) * deg2rad);
+  dL += 0.045758 * E * Math.sin((2 * D - Ms) * deg2rad);
+  dL -= 0.040923 * E * Math.sin((Ms - Mp) * deg2rad);
+  dL -= 0.034720 * Math.sin(D * deg2rad);
+  dL -= 0.030383 * E * Math.sin((Ms + Mp) * deg2rad);
+  dL += 0.015327 * Math.sin((2 * D - 2 * F) * deg2rad);
+  dL -= 0.012528 * Math.sin((Mp + 2 * F) * deg2rad);
+  dL += 0.010980 * Math.sin((Mp - 2 * F) * deg2rad);
+  dL += 0.010675 * Math.sin((4 * D - Mp) * deg2rad);
+  dL += 0.010034 * Math.sin(3 * Mp * deg2rad);
+  dL += 0.008548 * Math.sin((4 * D - 2 * Mp) * deg2rad);
+  dL -= 0.007888 * E * Math.sin((2 * D + Ms - Mp) * deg2rad);
+  dL -= 0.006766 * E * Math.sin((2 * D + Ms) * deg2rad);
+  dL -= 0.005163 * Math.sin((D - Mp) * deg2rad);
+  dL += 0.004987 * E * Math.sin((D + Ms) * deg2rad);
+  dL += 0.004036 * E * Math.sin((2 * D - Ms + Mp) * deg2rad);
+  dL += 0.003958 * Math.sin(A1 * deg2rad);
+  dL += 0.001962 * Math.sin((Lp - F) * deg2rad);
+  dL += 0.000318 * Math.sin(A2 * deg2rad);
+
+  const moonLon = norm(Lp + dL);
+
+  // Lahiri (Chitrapaksha) Ayanamsa
+  const ayanamsa = 23.853056 + 1.396042 * T + 0.000308 * T * T;
+  const siderealSun = norm(sunLon - ayanamsa);
+  const siderealMoon = norm(moonLon - ayanamsa);
+
+  const elongation = norm(moonLon - sunLon);
+  const thithiIdx = Math.floor(elongation / 12); // 0 to 29
+  const karanaIdx = Math.floor(elongation / 6); // 0 to 59
+  const nakshatraIdx = Math.floor(siderealMoon / (360 / 27)); // 0 to 26
+  const pada = Math.floor((siderealMoon % (360 / 27)) / (360 / 108)) + 1;
+
+  return { siderealSun, siderealMoon, elongation, thithiIdx, karanaIdx, nakshatraIdx, pada };
+}
+
+/**
+ * Find when the current Thithi or Nakshatram transitions (in local minutes from 00:00 of the current day)
+ */
+function findTransitionMinutes(
+  jdStart: number,
+  startLocalMinutes: number,
+  currentIdx: number,
+  type: 'thithi' | 'nakshatra'
+): number | null {
+  const stepDays = 20 / 1440; // 20-minute steps up to 30 hours
+  let prevJd = jdStart;
+  for (let i = 1; i <= 90; i++) {
+    const testJd = jdStart + i * stepDays;
+    const state = getAstronomicalState(testJd);
+    const idx = type === 'thithi' ? state.thithiIdx : state.nakshatraIdx;
+    if (idx !== currentIdx) {
+      let lo = prevJd;
+      let hi = testJd;
+      for (let b = 0; b < 8; b++) {
+        const mid = (lo + hi) / 2;
+        const mState = getAstronomicalState(mid);
+        const mIdx = type === 'thithi' ? mState.thithiIdx : mState.nakshatraIdx;
+        if (mIdx === currentIdx) lo = mid;
+        else hi = mid;
+      }
+      const deltaMin = (((lo + hi) / 2) - jdStart) * 1440;
+      return startLocalMinutes + deltaMin;
+    }
+    prevJd = testJd;
+  }
+  return null;
+}
+
+function getKaranamName(karanaIdx: number): string {
+  if (karanaIdx === 0) return 'கிம்ஸ்துக்ன கரணம்';
+  if (karanaIdx === 57) return 'சகுனி கரணம்';
+  if (karanaIdx === 58) return 'சதுஷ்பாத கரணம்';
+  if (karanaIdx === 59) return 'நாகவ கரணம்';
+  const movableKaranas = [
+    'பவ கரணம்',
+    'பாலவ கரணம்',
+    'கௌலவ கரணம்',
+    'தைதுலை கரணம்',
+    'கரசை கரணம்',
+    'வணிசை கரணம்',
+    'பத்திரை (விஷ்டி) கரணம்',
+  ];
+  return movableKaranas[(karanaIdx - 1) % 7];
+}
+
+/**
  * Calculate approximate Sunrise and Sunset in minutes from midnight for a given city and day of year.
  */
 function calculateSunTimes(date: Date, city: CityInfo): { sunriseMin: number; sunsetMin: number } {
-  const startOfYear = new Date(Date.UTC(date.getFullYear(), 0, 1));
-  const dayOfYear = Math.floor((date.getTime() - startOfYear.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+  const startOfYearUtc = Date.UTC(date.getFullYear(), 0, 1);
+  const currentUtc = Date.UTC(date.getFullYear(), date.getMonth(), date.getDate());
+  const dayOfYear = Math.floor((currentUtc - startOfYearUtc) / (1000 * 60 * 60 * 24)) + 1;
 
   // Approximate Solar Declination
   const declination = 23.45 * Math.sin((2 * Math.PI / 365) * (dayOfYear - 81));
@@ -231,30 +375,51 @@ export function calculateDayPanchangam(targetDate: Date, city: CityInfo): DayPan
   else if (tamilMonthIndex === 8 || tamilMonthIndex === 9) ruthu = 'ஹேமந்த ருது';
   else ruthu = 'சிசிர ருது';
 
-  // Nakshatram calculation anchored to 2024-04-27 (Uthiram = index 11)
-  const anchorTime = new Date(Date.UTC(2024, 3, 27)).getTime();
-  const currentUtcTime = new Date(Date.UTC(year, month, day)).getTime();
+  // Astronomical Nakshatram, Thithi, Pada & Karanam calculated at local Sunrise (Udaya Thithi / Udaya Nakshatram)
+  const anchorTime = Date.UTC(2024, 3, 27);
+  const currentUtcTime = Date.UTC(year, month, day);
   const diffDays = Math.round((currentUtcTime - anchorTime) / (1000 * 60 * 60 * 24));
-  
-  // Moon spends ~1 day per nakshatram (27.32 days total cycle)
-  const nakshatraIndex = (((11 + diffDays) % 27) + 27) % 27;
-  const currentNakshatram = NAKSHATRAMS[nakshatraIndex];
 
-  // Thithi calculation anchored to 2024-04-27 (Sukla Panchami = index 4)
-  // Synodic lunar cycle is ~29.530588 days
-  const lunarCycle = 29.530588;
-  const lunarOffset = (diffDays % lunarCycle + lunarCycle) % lunarCycle;
-  const thithiCycleIndex = Math.floor((4 + lunarOffset) % 30);
-  
+  const sunriseUtcHours = sunriseMin / 60 - city.utcOffset;
+  const jdSunrise = currentUtcTime / 86400000 + 2440587.5 + sunriseUtcHours / 24;
+  const astroState = getAstronomicalState(jdSunrise);
+
+  const nakshatraIndex = astroState.nakshatraIdx;
+  const currentNakshatram = NAKSHATRAMS[nakshatraIndex];
+  const nextNakshatram = NAKSHATRAMS[(nakshatraIndex + 1) % 27];
+  const nakshatraEndMin = findTransitionMinutes(jdSunrise, sunriseMin, nakshatraIndex, 'nakshatra');
+  const nakshatraDurationText =
+    nakshatraEndMin !== null
+      ? `${formatTime12h(nakshatraEndMin)} வரை, பின்னர் ${nextNakshatram.name}`
+      : `நாள் முழுவதும் ${currentNakshatram.name}`;
+
+  const thithiCycleIndex = astroState.thithiIdx;
   const isSukla = thithiCycleIndex < 15;
   const thithiNumber = (thithiCycleIndex % 15) + 1;
+  const paksha: 'Sukla' | 'Krishna' = isSukla ? 'Sukla' : 'Krishna';
   const pakshaTamil = isSukla ? 'சுக்கில பட்சம் (வளர்பிறை)' : 'கிருஷ்ண பட்சம் (தேய்பிறை)';
   const baseThithiName = THITHIS[(thithiNumber - 1) % 15];
-  
+
   let fullThithiName = `${isSukla ? 'சுக்கில பட்ச' : 'கிருஷ்ண பட்ச'} ${baseThithiName}`;
   if (thithiNumber === 15) {
     fullThithiName = isSukla ? 'பௌர்ணமி (முழு நிலவு)' : 'அமாவாசை (இருள் நிலவு)';
   }
+
+  const nextThithiCycleIndex = (thithiCycleIndex + 1) % 30;
+  const nextIsSukla = nextThithiCycleIndex < 15;
+  const nextThithiNumber = (nextThithiCycleIndex % 15) + 1;
+  const nextThithiBase =
+    nextThithiNumber === 15
+      ? nextIsSukla
+        ? 'பௌர்ணமி'
+        : 'அமாவாசை'
+      : THITHIS[(nextThithiNumber - 1) % 15];
+
+  const thithiEndMin = findTransitionMinutes(jdSunrise, sunriseMin, thithiCycleIndex, 'thithi');
+  const thithiDurationText =
+    thithiEndMin !== null
+      ? `${formatTime12h(thithiEndMin)} வரை, பின்னர் ${nextThithiBase}`
+      : `நாள் முழுவதும் ${baseThithiName}`;
 
   // Yogam (Weekday + Star)
   const yogaIndex = (dayOfWeek + nakshatraIndex) % 3;
@@ -265,12 +430,8 @@ export function calculateDayPanchangam(targetDate: Date, city: CityInfo): DayPan
     nature: yogamNatures[yogaIndex],
   };
 
-  // Karanam
-  const karanaList = [
-    'பவ கரணம்', 'பாலவ கரணம்', 'கௌலவ கரணம்', 'தைதுலை கரணம்', 
-    'கரசை கரணம்', 'வணிசை கரணம்', 'பத்திரை கரணம்'
-  ];
-  const karanaName = karanaList[((thithiNumber * 2 + dayOfWeek) % 7)];
+  // Karanam (Astronomical half-thithi)
+  const karanaName = getKaranamName(astroState.karanaIdx);
 
   // Rahu Kalam, Yamagandam, Kuligai by Weekday
   // Standard 8 parts of day
@@ -321,26 +482,66 @@ export function calculateDayPanchangam(targetDate: Date, city: CityInfo): DayPan
   const kuralIndex = Math.abs(diffDays) % THIRUKKURAL_COLLECTION.length;
   const thirukkural = THIRUKKURAL_COLLECTION[kuralIndex];
 
-  // Special Festivals matching this date
-  const matchedFestival = MAJOR_FESTIVALS.find(f => f.dateString === dateString);
-  const matchedMuhurtham = SUBHA_MUHURTHAM_DAYS.find(m => m.dateString === dateString);
+  // Special Festivals matching this date (exact override or rule-based)
+  const exactFestival = MAJOR_FESTIVALS.find(f => f.dateString === dateString);
+  const ruleFestival = FESTIVAL_RULES.find(r => {
+    if (r.tamilMonthIndex !== tamilMonthIndex) return false;
+    if (r.fixedTamilDate !== undefined) return r.fixedTamilDate === tamilDateNumber;
+    if (r.targetNakshatram !== undefined) return r.targetNakshatram === currentNakshatram.name;
+    if (r.targetPaksha !== undefined && r.targetThithiNumber !== undefined) {
+      return r.targetPaksha === paksha && r.targetThithiNumber === thithiNumber;
+    }
+    return false;
+  });
 
+  const matchedFestival = exactFestival || (ruleFestival ? {
+    id: `${ruleFestival.id}_${dateString}`,
+    dateString,
+    titleTamil: ruleFestival.titleTamil,
+    titleEnglish: ruleFestival.titleEnglish,
+    tamilDateStr: `${TAMIL_MONTHS[tamilMonthIndex].name} ${String(tamilDateNumber).padStart(2, '0')}`,
+    category: ruleFestival.category,
+    deity: ruleFestival.deity,
+    description: ruleFestival.description,
+  } : undefined);
+
+  const exactMuhurtham = SUBHA_MUHURTHAM_DAYS.find(m => m.dateString === dateString);
+  const isRuleMuhurthamDay =
+    currentNakshatram.auspicious &&
+    currentYogam.nature !== 'Varjyam' &&
+    (dayOfWeek === 0 || dayOfWeek === 1 || dayOfWeek === 3 || dayOfWeek === 4 || dayOfWeek === 5) &&
+    ![4, 8, 9, 14, 15].includes(thithiNumber);
+
+  const lagnams = ['ரிஷப லக்னம்', 'மிதுன லக்னம்', 'கடக லக்னம்', 'சிம்ம லக்னம்', 'கன்னி லக்னம்', 'துலா லக்னம்', 'விருச்சிக லக்னம்', 'தனுசு லக்னம்', 'கும்ப லக்னம்', 'மீன லக்னம்'];
+  const computedLagnam = lagnams[(tamilMonthIndex + day) % lagnams.length];
+  const matchedMuhurtham = exactMuhurtham || (isRuleMuhurthamDay ? {
+    dateString,
+    tamilDate: `${TAMIL_MONTHS[tamilMonthIndex].name} ${String(tamilDateNumber).padStart(2, '0')}`,
+    dayOfWeek: TAMIL_WEEKDAYS[dayOfWeek],
+    lagnam: computedLagnam,
+    nakshatram: currentNakshatram.name,
+    thithi: fullThithiName,
+    type: isSukla ? 'valarpirai' as const : 'theipirai' as const,
+    bestTime: nallaNeramPresets[dayOfWeek].morning,
+    suitableFor: isSukla ? 'திருமணம், கிரஹப்பிரவேசம், சீமந்தம், புதிய தொழில்' : 'பத்திரப் பதிவு, பூமி பூஜை, வளைகாப்பு, சுப காரியங்கள்',
+  } : undefined);
+
+  const yogamTag = `#${currentYogam.name.replace(/\s+/g, '_')}`;
   const specialEvents = {
     title: matchedFestival ? matchedFestival.titleTamil : (matchedMuhurtham ? `சுப முகூர்த்த நன்னாள் (${matchedMuhurtham.lagnam})` : `இன்றைய தினசரி வழிபாட்டு சிறப்பு`),
-    description: matchedFestival ? matchedFestival.description : (matchedMuhurtham ? `${matchedMuhurtham.suitableFor} செய்ய மிகவும் உகந்த நன்னாள். நல்நேரம்: ${matchedMuhurtham.bestTime}` : `இன்று விசேஷ வழிபாடுகள் மற்றும் குலதெய்வ பிரார்த்தனைகளுக்கு உகந்த சுப தினம். இல்லத்தில் தீபமேற்றி நல்வாழ்த்து பெறவும்.`),
+    description: matchedFestival ? matchedFestival.description : (matchedMuhurtham ? `${matchedMuhurtham.suitableFor} செய்ய மிகவும் உகந்த நன்னாள். நல்நேரம்: ${matchedMuhurtham.bestTime}` : `இன்று விசேஷ வழிபாடுகள் மற்றும் குலதெய்வ பிரார்த்தனைகளுக்கு உகந்த தினம். இல்லத்தில் தீபமேற்றி நல்வாழ்த்து பெறவும்.`),
     tags: matchedFestival ? [
       `#${matchedFestival.category}`,
       `#${matchedFestival.deity.split(' ')[0]}`,
-      '#சுபதினம்'
-    ] : (matchedMuhurtham ? ['#சுபமுகூர்த்த_நாள்', '#விசேஷம்', '#கல்யாணம்'] : ['#தினசரி_வழிபாடு', '#சித்த_யோகம்', '#சுப_நன்னாள்']),
-    isSubhaMuhurtham: !!matchedMuhurtham || (dayOfWeek === 0 || dayOfWeek === 4 || dayOfWeek === 5) && currentNakshatram.auspicious,
+      yogamTag
+    ] : (matchedMuhurtham ? ['#சுபமுகூர்த்த_நாள்', '#விசேஷம்', yogamTag] : ['#தினசரி_வழிபாடு', yogamTag, currentNakshatram.auspicious ? '#சுப_நட்சத்திரம்' : '#வழிபாட்டு_நாள்']),
+    isSubhaMuhurtham: !!matchedMuhurtham,
     muhurthamType: matchedMuhurtham?.type || (isSukla ? 'valarpirai' : 'theipirai'),
   };
 
-  // Cross Eras
-  const hijriYear = year - 579;
-  const kollamYear = year - 825;
-  const sakaYear = year - 78;
+  // Saka Era (Chaitra starts around March 22, or March 21 in leap years)
+  const isBeforeSakaNewYear = month < 2 || (month === 2 && day < 22);
+  const sakaYear = isBeforeSakaNewYear ? year - 79 : year - 78;
 
   return {
     date,
@@ -362,17 +563,17 @@ export function calculateDayPanchangam(targetDate: Date, city: CityInfo): DayPan
     nakshatram: {
       name: currentNakshatram.name,
       translit: currentNakshatram.translit,
-      pada: ((diffDays % 4) + 4) % 4 + 1,
+      pada: astroState.pada,
       description: currentNakshatram.auspicious ? 'சுப நட்சத்திரம் • காரிய வெற்றி தரும்' : 'நடுத்தர நட்சத்திரம் • கவனத்துடன் செயல்படவும்',
       isAuspicious: currentNakshatram.auspicious,
-      durationText: 'முழு இரவு வரை நீடிக்கிறது • சுப நட்சத்திரம்',
+      durationText: nakshatraDurationText,
     },
     thithi: {
       name: fullThithiName,
-      paksha: isSukla ? 'Sukla' : 'Krishna',
+      paksha,
       pakshaTamil,
       number: thithiNumber,
-      durationText: `மாலை ${formatTimeHHMM(sunsetMin - 60)} வரை, பின்னர் அடுத்த திதி`,
+      durationText: thithiDurationText,
       isPournami: isSukla && thithiNumber === 15,
       isAmavasai: !isSukla && thithiNumber === 15,
       isSashti: thithiNumber === 6,
@@ -421,9 +622,181 @@ export function calculateDayPanchangam(targetDate: Date, city: CityInfo): DayPan
     },
 
     eras: {
-      hijri: `ஷவ்வால் ${((day % 29) + 1)}, ${hijriYear}`,
-      kollam: `${kollamYear} ${TAMIL_MONTHS[tamilMonthIndex].name} ${tamilDateNumber}`,
       saka: `${sakaYear}`,
     },
   };
+}
+
+/**
+ * Generate Festival & Viratham Events for a given Tamil year cycle (April 14 of startYear to April 13 of startYear + 1)
+ */
+export function getFestivalsForYear(referenceDate: Date, city: CityInfo): FestivalEvent[] {
+  const refYear = referenceDate.getFullYear();
+  const isBeforeTamilNewYear = referenceDate.getMonth() < 3 || (referenceDate.getMonth() === 3 && referenceDate.getDate() < 14);
+  const tamilYearStart = isBeforeTamilNewYear ? refYear - 1 : refYear;
+
+  // If the Tamil year starts in 2024, return the curated 2024-2025 list
+  if (tamilYearStart === 2024) {
+    return MAJOR_FESTIVALS;
+  }
+
+  const events: FestivalEvent[] = [];
+  const seenRuleIds = new Set<string>();
+  const startDate = new Date(tamilYearStart, 3, 14); // April 14
+
+  for (let i = 0; i < 365; i++) {
+    const d = new Date(startDate);
+    d.setDate(startDate.getDate() + i);
+    const p = calculateDayPanchangam(d, city);
+
+    for (const rule of FESTIVAL_RULES) {
+      if (seenRuleIds.has(rule.id)) continue;
+      if (rule.tamilMonthIndex !== p.tamilMonthIndex) continue;
+
+      let matched = false;
+      if (rule.fixedTamilDate !== undefined && rule.fixedTamilDate === p.tamilDate) {
+        matched = true;
+      } else if (rule.targetNakshatram !== undefined && rule.targetNakshatram === p.nakshatram.name) {
+        matched = true;
+      } else if (
+        rule.targetPaksha !== undefined &&
+        rule.targetThithiNumber !== undefined &&
+        rule.targetPaksha === p.thithi.paksha &&
+        rule.targetThithiNumber === p.thithi.number
+      ) {
+        matched = true;
+      }
+
+      if (matched) {
+        seenRuleIds.add(rule.id);
+        events.push({
+          id: `${rule.id}_${p.dateString}`,
+          dateString: p.dateString,
+          titleTamil: rule.titleTamil,
+          titleEnglish: rule.titleEnglish,
+          tamilDateStr: `${p.tamilMonthName} ${String(p.tamilDate).padStart(2, '0')}`,
+          category: rule.category,
+          deity: rule.deity,
+          description: rule.description,
+        });
+      }
+    }
+  }
+
+  return events;
+}
+
+/**
+ * Generate Subha Muhurtham Days for a given Tamil year cycle (April 14 of startYear to April 13 of startYear + 1)
+ */
+export function getMuhurthamsForYear(referenceDate: Date, city: CityInfo): MuhurthamEvent[] {
+  const refYear = referenceDate.getFullYear();
+  const isBeforeTamilNewYear = referenceDate.getMonth() < 3 || (referenceDate.getMonth() === 3 && referenceDate.getDate() < 14);
+  const tamilYearStart = isBeforeTamilNewYear ? refYear - 1 : refYear;
+
+  if (tamilYearStart === 2024) {
+    return SUBHA_MUHURTHAM_DAYS;
+  }
+
+  const events: MuhurthamEvent[] = [];
+  const startDate = new Date(tamilYearStart, 3, 14);
+  const lagnams = ['ரிஷப லக்னம்', 'மிதுன லக்னம்', 'கடக லக்னம்', 'சிம்ம லக்னம்', 'துலா லக்னம்', 'விருச்சிக லக்னம்', 'தனுசு லக்னம்', 'மேஷ லக்னம்'];
+
+  for (let i = 0; i < 365; i++) {
+    const d = new Date(startDate);
+    d.setDate(startDate.getDate() + i);
+    const dayOfWeek = d.getDay();
+    // Prioritize traditional wedding/auspicious weekdays (Sun, Mon, Wed, Thu, Fri)
+    if (dayOfWeek !== 0 && dayOfWeek !== 1 && dayOfWeek !== 4 && dayOfWeek !== 5) continue;
+
+    const p = calculateDayPanchangam(d, city);
+    if (
+      p.nakshatram.isAuspicious &&
+      p.yogam.nature !== 'Varjyam' &&
+      [2, 3, 5, 7, 10, 11, 12, 13].includes(p.thithi.number)
+    ) {
+      // Keep ~2-3 top muhurthams per Tamil month for a clean curated view
+      const monthCount = events.filter(e => e.tamilDate.startsWith(p.tamilMonthName)).length;
+      if (monthCount >= 2) continue;
+
+      const isSukla = p.thithi.paksha === 'Sukla';
+      events.push({
+        dateString: p.dateString,
+        tamilDate: `${p.tamilMonthName} ${String(p.tamilDate).padStart(2, '0')}`,
+        dayOfWeek: p.tamilWeekday,
+        lagnam: lagnams[(p.tamilMonthIndex + p.tamilDate) % lagnams.length],
+        nakshatram: p.nakshatram.name,
+        thithi: p.thithi.name,
+        type: isSukla ? 'valarpirai' : 'theipirai',
+        bestTime: p.nallaNeram.morning || 'காலை 07:30 - 09:00',
+        suitableFor: isSukla
+          ? 'திருமணம், கிரஹப்பிரவேசம், சீமந்தம், புதிய தொழில்'
+          : 'பத்திரப் பதிவு, பூமி பூஜை, வளைகாப்பு, சுப காரியங்கள்',
+      });
+    }
+  }
+
+  return events;
+}
+
+/**
+ * Dynamically compute the next 5 upcoming Viratham / Auspicious days starting from targetDate
+ */
+export function getUpcomingVirathams(
+  targetDate: Date,
+  city: CityInfo
+): { title: string; dateLabel: string; dateStr: string }[] {
+  const results: { title: string; dateLabel: string; dateStr: string }[] = [];
+  const tamilMonthsGregorian = [
+    'ஜனவரி', 'பிப்ரவரி', 'மார்ச்', 'ஏப்ரல்', 'மே', 'ஜூன்',
+    'ஜூலை', 'ஆகஸ்ட்', 'செப்டம்பர்', 'அக்டோபர்', 'நவம்பர்', 'டிசம்பர்'
+  ];
+
+  for (let offset = 1; offset <= 45 && results.length < 5; offset++) {
+    const d = new Date(targetDate);
+    d.setDate(targetDate.getDate() + offset);
+    const p = calculateDayPanchangam(d, city);
+
+    let title: string | null = null;
+    const matchedFest = MAJOR_FESTIVALS.find(f => f.dateString === p.dateString) ||
+      FESTIVAL_RULES.find(r => {
+        if (r.tamilMonthIndex !== p.tamilMonthIndex) return false;
+        if (r.fixedTamilDate !== undefined) return r.fixedTamilDate === p.tamilDate;
+        if (r.targetNakshatram !== undefined) return r.targetNakshatram === p.nakshatram.name;
+        if (r.targetPaksha !== undefined && r.targetThithiNumber !== undefined) {
+          return r.targetPaksha === p.thithi.paksha && r.targetThithiNumber === p.thithi.number;
+        }
+        return false;
+      });
+    if (matchedFest) {
+      title = matchedFest.titleTamil;
+    } else if (p.thithi.isPournami) {
+      title = `${p.tamilMonthName} பௌர்ணமி விரதம்`;
+    } else if (p.thithi.isAmavasai) {
+      title = `${p.tamilMonthName} அமாவாசை வழிபாடு`;
+    } else if (p.thithi.isEkadasi) {
+      title = `${p.thithi.paksha === 'Sukla' ? 'வளர்பிறை' : 'தேய்பிறை'} ஏகாதசி விரதம்`;
+    } else if (p.thithi.isPradosham) {
+      title = `${p.tamilWeekday.replace('க்கிழமை', '')} பிரதோஷ வழிபாடு`;
+    } else if (p.thithi.isSashti && p.thithi.paksha === 'Sukla') {
+      title = `${p.tamilMonthName} சஷ்டி விரதம்`;
+    } else if (p.thithi.isSankataharaChaturthi) {
+      title = 'சங்கடஹர சதுர்த்தி விரதம்';
+    }
+
+    if (title) {
+      const dayStr = String(d.getDate()).padStart(2, '0');
+      const monthTamil = tamilMonthsGregorian[d.getMonth()];
+      const dateLabel = offset === 1
+        ? `${monthTamil} ${dayStr} (நாளை)`
+        : `${monthTamil} ${dayStr}, ${d.getFullYear()}`;
+      results.push({
+        title,
+        dateLabel,
+        dateStr: p.dateString,
+      });
+    }
+  }
+
+  return results;
 }

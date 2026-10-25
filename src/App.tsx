@@ -12,9 +12,8 @@ import { FestivalsView } from './components/FestivalsView.tsx';
 import { GlossaryView } from './components/GlossaryView.tsx';
 
 export default function App() {
-  // Initial date: reference sample date 2024-04-27 (matching the uploaded stitch image)
-  // or user can press "இன்று (Today)" for live real-time date!
-  const [currentDate, setCurrentDate] = useState<Date>(() => new Date(2024, 3, 27));
+  // Initial date: live current date
+  const [currentDate, setCurrentDate] = useState<Date>(() => new Date());
   const [currentTab, setCurrentTab] = useState<MainViewTab>('today');
   const [selectedCity, setSelectedCity] = useState<CityInfo>(CITIES[0]); // Chennai default
 
@@ -55,8 +54,6 @@ export default function App() {
       <TopHeader
         currentTab={currentTab}
         onSelectTab={setCurrentTab}
-        selectedCity={selectedCity}
-        onSelectCity={setSelectedCity}
         panchangam={panchangam}
       />
 
@@ -67,6 +64,8 @@ export default function App() {
         onNextDay={handleNextDay}
         onToday={handleToday}
         onSelectDate={handleSelectDate}
+        selectedCity={selectedCity}
+        onSelectCity={setSelectedCity}
         panchangam={panchangam}
       />
 
@@ -83,6 +82,7 @@ export default function App() {
             <div className="lg:col-span-4 no-print">
               <RightSidebarCards
                 panchangam={panchangam}
+                selectedCity={selectedCity}
                 onSelectDateString={handleSelectDateString}
               />
             </div>
@@ -98,11 +98,19 @@ export default function App() {
         )}
 
         {currentTab === 'muhurtham' && (
-          <MuhurthamView onSelectDateString={handleSelectDateString} />
+          <MuhurthamView
+            currentDate={currentDate}
+            selectedCity={selectedCity}
+            onSelectDateString={handleSelectDateString}
+          />
         )}
 
         {currentTab === 'festivals' && (
-          <FestivalsView onSelectDateString={handleSelectDateString} />
+          <FestivalsView
+            currentDate={currentDate}
+            selectedCity={selectedCity}
+            onSelectDateString={handleSelectDateString}
+          />
         )}
 
         {currentTab === 'glossary' && (

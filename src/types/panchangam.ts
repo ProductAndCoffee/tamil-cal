@@ -123,8 +123,6 @@ export interface DayPanchangam {
 
   // Other calendar eras
   eras: {
-    hijri: string;
-    kollam: string;
     saka: string;
   };
 }
