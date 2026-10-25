@@ -823,3 +823,18 @@ function tamilYearBeginning(year: number, city: CityInfo): Date {
   }
   throw new Error('Tamil new year outside supported search interval');
 }
+
+/** Next sunrise-observed Amavasya, including the selected day when applicable.
+ * Count civil days rather than elapsed hours so DST cannot change the countdown.
+ */
+export function getNextAmavasya(targetDate: Date, city: CityInfo): { date: Date; daysUntil: number } | null {
+  if (!Number.isFinite(targetDate.getTime())) return null;
+  for (let daysUntil = 0; daysUntil <= 65; daysUntil++) {
+    const date = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate() + daysUntil);
+    const { sunriseMin } = calculateSunTimes(date, city);
+    if (getAstronomicalState(localJulianDay(date, sunriseMin, city)).thithiIdx === 29) {
+      return { date, daysUntil };
+    }
+  }
+  return null;
+}

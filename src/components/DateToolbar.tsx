@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   Calendar as CalendarIcon,
   ChevronLeft,
@@ -8,9 +8,11 @@ import {
   Check,
   MapPin,
   ChevronDown,
+  Circle,
 } from 'lucide-react';
 import { CityInfo, DayPanchangam } from '../types/panchangam.ts';
 import { CITIES } from '../data/cities.ts';
+import { getNextAmavasya } from '../utils/panchangamCalculator.ts';
 
 interface DateToolbarProps {
   currentDate: Date;
@@ -43,6 +45,14 @@ export const DateToolbar: React.FC<DateToolbarProps> = ({
   const year = currentDate.getFullYear();
   const formattedDisplay = `${day}/${month}/${year}`;
   const inputDateValue = `${year}-${month}-${day}`;
+
+  const nextAmavasya = useMemo(
+    () => getNextAmavasya(currentDate, selectedCity),
+    [currentDate, selectedCity],
+  );
+  const amavasyaDateLabel = nextAmavasya?.date.toLocaleDateString('en-GB', {
+    day: 'numeric', month: 'short', year: 'numeric',
+  });
 
   const handleNativeDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.value) {
@@ -103,7 +113,7 @@ export const DateToolbar: React.FC<DateToolbarProps> = ({
         </div>
 
         {/* City Selector, Date Selector & Action Tools */}
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           
           {/* City Picker (Matched to Date Picker height, border, and radius) */}
           <div className="relative flex items-center">
@@ -171,6 +181,24 @@ export const DateToolbar: React.FC<DateToolbarProps> = ({
               />
             </label>
           </div>
+
+          {nextAmavasya && (
+            <div className="flex items-center gap-2 rounded-md border border-[#d5c7b3] bg-[#f4eee3] pr-3 text-[#690600]">
+              <button
+                type="button"
+                onClick={() => onSelectDate(nextAmavasya.date)}
+                aria-label={`Go to Amavasya on ${amavasyaDateLabel}`}
+                title={`அமாவாசை • ${amavasyaDateLabel}`}
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md hover:bg-[#e8dcc8] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#8b1e0f] cursor-pointer"
+              >
+                <Circle aria-hidden="true" className="h-4 w-4 fill-current" />
+              </button>
+              <div className="text-[11px] leading-tight" title="Days from the selected calendar date">
+                <div className="font-semibold">அமாவாசை · {nextAmavasya.daysUntil === 0 ? 'Today' : `In ${nextAmavasya.daysUntil} ${nextAmavasya.daysUntil === 1 ? 'day' : 'days'}`}</div>
+                <div className="mt-0.5 font-sans text-stone-600">{amavasyaDateLabel}</div>
+              </div>
+            </div>
+          )}
 
           {/* Print Button */}
           <button

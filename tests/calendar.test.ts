@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { CITIES } from '../src/data/cities.ts';
-import { tamilSolarDate, utcOffsetAt, calculateDayPanchangam, ascendantLongitude, localJulianDay, lagnamAtTime } from '../src/utils/panchangamCalculator.ts';
+import { tamilSolarDate, utcOffsetAt, calculateDayPanchangam, ascendantLongitude, localJulianDay, lagnamAtTime, getNextAmavasya } from '../src/utils/panchangamCalculator.ts';
 const chennai = CITIES[0];
 for (const year of [2024, 2025, 2026, 2027, 2028]) {
   let previous = tamilSolarDate(new Date(year - 1, 11, 31), chennai);
@@ -39,3 +39,20 @@ const june = calculateDayPanchangam(new Date(2026,5,1),chennai);
 assert.equal(june.tamilDate,may.tamilDate+1);
 assert.notEqual(lagnamAtTime(new Date(2026,5,1),chennai,'09:00'), lagnamAtTime(new Date(2026,5,1),chennai,'15:00'));
 console.log('Passed: five years of date continuity, timezone transitions, eastern-horizon geometry, and regression cases.');
+
+// Countdown and navigation target agree with the calendar, including year rollover and DST.
+for (const city of [chennai, london, CITIES.find(c => c.id === 'newyork')!]) {
+  for (const start of [new Date(2026, 9, 25), new Date(2026, 11, 25), new Date(2026, 2, 28)]) {
+    const next = getNextAmavasya(start, city)!;
+    assert.ok(next);
+    assert.ok(calculateDayPanchangam(next.date, city).thithi.isAmavasai);
+    const expected = new Date(start.getFullYear(), start.getMonth(), start.getDate() + next.daysUntil);
+    assert.equal(next.date.getTime(), expected.getTime());
+    assert.equal(getNextAmavasya(next.date, city)!.daysUntil, 0);
+    for (let day = 0; day < next.daysUntil; day++) {
+      assert.equal(calculateDayPanchangam(new Date(start.getFullYear(), start.getMonth(), start.getDate() + day), city).thithi.isAmavasai, false);
+    }
+  }
+}
+assert.equal(getNextAmavasya(new Date(NaN), chennai), null);
+console.log('Passed: Amavasya countdown, first matching date, current-day target, year rollover and DST.');
